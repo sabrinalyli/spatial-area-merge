@@ -7,27 +7,65 @@ library(magrittr)
 options(scipen=999)
 
 
-## we only need an identifying variable and the geometry of the state to proceed
-brazil_states <- geobr::read_state(code_state = "all", simplified=TRUE) %>%
-    select(code_state,geom) %>%
-    mutate(code_state = as.character(code_state))
+# ## we only need an identifying variable and the geometry of the state to proceed
+# brazil_states <- geobr::read_state(code_state = "all", simplified=TRUE) %>%
+#     select(code_state,geom) %>%
+#     mutate(code_state = as.character(code_state))
+# 
+# set.seed(0)
+# 
+# ## We add populations to each state so we have a variable to aggregate by.
+# num_states <- nrow(brazil_states)
+# brazil_states$pop_total <- sample(1:num_states,
+#                                   size = num_states,
+#                                   replace = FALSE)
+# 
+# pop_threshold <- 75
+  
+# code_muni_select<-c("3550308")
+  
+  # c("3541000","3551009","3531100","3522109",
+  #                   "3513504","3537602","3551009",
+  #                   "3548500","3518701","3548708",
+  #                   "3520301", "3520426","3509908",
+  #                   "3536208","3524600","3509254",
+  #                   "3505401","3537206","3542602","3514809",
+  #                   "3521200", "3555406","3513603",
+  #                   "3549607","3503158","3549607",
+  #                   "3503505","3513603","3550001",
+  #                   "3532306","3535606","3545001",
+  #                   "3506607","3530607","3552502")
 
-set.seed(0)
+#"3550308",
 
-## We add populations to each state so we have a variable to aggregate by.
-num_states <- nrow(brazil_states)
-brazil_states$pop_total <- sample(1:num_states,
-                                  size = num_states,
-                                  replace = FALSE)
-
-pop_threshold <- 4
-
-
+#upload dataframe
 df<- readRDS('census_tracts_covariates_spstate_4aug.rds') %>%
-    select(code_tract,pop_total) %>%
+    select(code_tract,code_muni, pop_total) %>%
+    #filter(code_muni %in% code_muni_select)%>%
+    select(-code_muni) %>%
     mutate(code_tract=as.character(code_tract)) %>%
     mutate(pop_total=tidyr::replace_na(pop_total,0))
+st_geometry(df)<-NULL
 
+#upload census tract shapefile with full geometry
+census_tract<-geobr::read_census_tract(year=2010,code_tract="SP",simplified=FALSE)
+# muni<-geobr::read_municipality(year=2018,code_muni=35,simplified=FALSE)
+# st_write(muni, "muni_shape.shp")
+
+#ensure format is correct for merging later
+census_tract$code_tract<-as.character(census_tract$code_tract)
+df$code_tract<-as.character(df$code_tract)
+#re-merge census tract shapefile 
+df<-left_join(df,census_tract[,c("code_tract")],by="code_tract")
+df<-st_as_sf(df)
+# #write to shapefile
+# st_write(df, "census_tracts_shape.shp")
+
+# df_sp<-as_Spatial(df)
+# list.nb <- gTouches(df_sp, byid = TRUE, returnDense = FALSE)
+# #nearest neighbour search
+# neighbours<-nngeo::st_nn(df,df,k = 1,progress=FALSE)
+# neighbours<-st_join(df,df,join=st_nn,k=1,progress=FALSE)
 
 merge_smallest_by_centroid <- function(brazil_states) {
     ## Seperate the smallest state from the rest so we know what we want to
@@ -66,7 +104,7 @@ merge_smallest_by_centroid <- function(brazil_states) {
 }
 
 
-iterate_merging <- function(brazil_states, pop_threshold, max_iters = 56) {
+iterate_merging <- function(brazil_states, pop_threshold, max_iters = 5500) {
     iter_count <- 0
     smallest_pop <- min(brazil_states$pop_total)
     ## Loop until the smallest population is at least as big as the population
@@ -85,25 +123,21 @@ iterate_merging <- function(brazil_states, pop_threshold, max_iters = 56) {
     }
 }
 
-test<-df %>%
-    filter(pop_total<75)
+aggregated_sp_census_state <- iterate_merging(df, 75)
+saveRDS(aggregated_sp_census,"aggregated_sp_census_21aug.rds")
 
 
-aggregated_sp_census <- iterate_merging(df, 2)
-saveRDS(aggregated_sp_census,"aggregated_sp_census_15aug.rds")
-
-
-fig_1 <- ggplot() +
-    geom_sf(data = df,
-            mapping = aes(fill = code_tract,
-                          colour = pop_total == min(pop_total)),
-            size = 2)
-print(fig_1)
-
-aggregated_brazil_states <- iterate_merging(brazil_states, 24)
-fig_2 <- ggplot() +
-    geom_sf(data = aggregated_brazil_states,
-            mapping = aes(fill = code_tract,
-                          colour = pop_total == min(pop_total)),
-            size = 2)
-print(fig_2)
+# fig_1 <- ggplot() +
+#     geom_sf(data = df,
+#             mapping = aes(fill = code_tract,
+#                           colour = pop_total == min(pop_total)),
+#             size = 2)
+# print(fig_1)
+# 
+# aggregated_brazil_states <- iterate_merging(brazil_states, 24)
+# fig_2 <- ggplot() +
+#     geom_sf(data = aggregated_brazil_states,
+#             mapping = aes(fill = code_tract,
+#                           colour = pop_total == min(pop_total)),
+#             size = 2)
+# print(fig_2)

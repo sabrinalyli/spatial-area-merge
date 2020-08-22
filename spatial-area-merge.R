@@ -1,3 +1,4 @@
+library(progress)
 library(sf)
 library(dplyr)
 library(ggspatial)
@@ -38,8 +39,12 @@ options(scipen=999)
 
 #"3550308",
 
-#upload dataframe
-df<- readRDS('census_tracts_covariates_spstate_4aug.rds') %>%
+
+census_tract_covariaes_rds <- 'census_tracts_covariates_spstate_4aug.rds'
+
+stopifnot(file.exists(census_tract_covariaes_rds))
+
+df<- readRDS(census_tract_covariaes_rds) %>%
     select(code_tract,code_muni, pop_total) %>%
     #filter(code_muni %in% code_muni_select)%>%
     select(-code_muni) %>%
@@ -47,8 +52,17 @@ df<- readRDS('census_tracts_covariates_spstate_4aug.rds') %>%
     mutate(pop_total=tidyr::replace_na(pop_total,0))
 st_geometry(df)<-NULL
 
-#upload census tract shapefile with full geometry
-census_tract<-geobr::read_census_tract(year=2010,code_tract="SP",simplified=FALSE)
+
+census_tract_rds <- "census_tract_df.rds"
+census_tract <- if (file.exists(census_tract_rds)) {
+                    ## read the data in from disk
+                    readRDS(census_tract_rds)
+                } else {
+                    ## download the census tracts using the \code{geobr} package.
+                    geobr::read_census_tract(year=2010,
+                                             code_tract="SP",
+                                             simplified=FALSE)
+                }
 # muni<-geobr::read_municipality(year=2018,code_muni=35,simplified=FALSE)
 # st_write(muni, "muni_shape.shp")
 
@@ -107,13 +121,23 @@ merge_smallest_by_centroid <- function(brazil_states) {
 iterate_merging <- function(brazil_states, pop_threshold, max_iters = 5500) {
     iter_count <- 0
     smallest_pop <- min(brazil_states$pop_total)
+    iter_upper_bound <- min(sum(brazil_states$pop_total < pop_threshold), max_iters)
+    if (iter_upper_bound == max_iters) {
+        stop("max_iters given to iterate_merging appears too low!")
+    }
+    prog_bar <- progress_bar$new(format = "merging [:bar] :percent eta :eta after :elapsed",
+                                 total = iter_upper_bound,
+                                 clear = FALSE,
+                                 width = 80)
     ## Loop until the smallest population is at least as big as the population
     ## threshold so that there are no remaining small areas.
+    message("Running the merge")
+    prog_bar$tick(0)
     while (smallest_pop < pop_threshold & iter_count < max_iters) {
-        message("Running one iteration of the merge")
         brazil_states <- merge_smallest_by_centroid(brazil_states)
         smallest_pop <- min(brazil_states$pop_total)
         iter_count <- iter_count + 1 # <--- avoid infinite loop!
+        prog_bar$tick()
     }
 
     if (iter_count < max_iters) {

@@ -1,0 +1,9 @@
+2020-08-22  Alex Zarebski  <aez@zoo-zarebski>
+
+	* spatial-area-merge.R: Attempt to read the census tracks from a
+	local file rather than downloading if possible. Include a check
+	that the covariates file is available before proceeding with the
+	computation.
+	(iterate_merging): Include a progress bar showing elapsed time and
+	an estimate of the remaining time.
+

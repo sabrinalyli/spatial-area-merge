@@ -38,10 +38,14 @@ options(scipen=999)
 
 #"3550308",
 
+# census tracts of Sao Paulo metro area
+metro_sp_munis <- geobr::read_metro_area(year=2018)
+metro_sp_munis <- subset(metro_sp_munis, name_metro == 'RM São Paulo')$code_muni
+
 #upload dataframe
 df<- readRDS('census_tracts_covariates_spstate_4aug.rds') %>%
     select(code_tract,code_muni, pop_total) %>%
-    #filter(code_muni %in% code_muni_select)%>%
+    filter(!(code_muni %in% metro_sp_munis))%>%
     select(-code_muni) %>%
     mutate(code_tract=as.character(code_tract)) %>%
     mutate(pop_total=tidyr::replace_na(pop_total,0))
@@ -104,7 +108,7 @@ merge_smallest_by_centroid <- function(brazil_states) {
 }
 
 
-iterate_merging <- function(brazil_states, pop_threshold, max_iters = 5500) {
+iterate_merging <- function(brazil_states, pop_threshold, max_iters = 3900) {
     iter_count <- 0
     smallest_pop <- min(brazil_states$pop_total)
     ## Loop until the smallest population is at least as big as the population
@@ -124,7 +128,7 @@ iterate_merging <- function(brazil_states, pop_threshold, max_iters = 5500) {
 }
 
 aggregated_sp_census_state <- iterate_merging(df, 75)
-saveRDS(aggregated_sp_census,"aggregated_sp_census_21aug.rds")
+saveRDS(aggregated_sp_census_state,"aggregated_sp_census_23aug.rds")
 
 
 # fig_1 <- ggplot() +

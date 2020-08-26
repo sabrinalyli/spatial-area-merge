@@ -3,10 +3,16 @@ library(dplyr)
 library(ggspatial)
 library(ggplot2)
 library(magrittr)
+library(progress)
+library(tidyr)
+library(stringr)
+library(data.table)
 
 options(scipen=999)
 
+#====merge census tracts with small pop, then re-aggregate covariates====
 
+###sample test data###
 # ## we only need an identifying variable and the geometry of the state to proceed
 # brazil_states <- geobr::read_state(code_state = "all", simplified=TRUE) %>%
 #     select(code_state,geom) %>%
@@ -21,8 +27,9 @@ options(scipen=999)
 #                                   replace = FALSE)
 # 
 # pop_threshold <- 75
-  
-# code_muni_select<-c("3550308")
+
+###more sample test data###  
+#code_muni_select<-c("3548500")
   
   # c("3541000","3551009","3531100","3522109",
   #                   "3513504","3537602","3551009",
@@ -39,18 +46,23 @@ options(scipen=999)
 #"3550308",
 
 # census tracts of Sao Paulo metro area
-metro_sp_munis <- geobr::read_metro_area(year=2018)
-metro_sp_munis <- subset(metro_sp_munis, name_metro == 'RM São Paulo')$code_muni
+#metro_sp_munis <- geobr::read_metro_area(year=2018)
+#metro_sp_munis <- subset(metro_sp_munis, name_metro == 'RM São Paulo')$code_muni
 
-#upload dataframe
-df<- readRDS('census_tracts_covariates_spstate_4aug.rds') %>%
-    select(code_tract,code_muni, pop_total) %>%
-    filter(!(code_muni %in% metro_sp_munis))%>%
+#upload covariates dataframe which contains geometry - data on dropbox
+df<- readRDS('census_tracts_covariates_spstate_12aug.rds') %>%
+    select(code_tract,code_muni, pop_total,pop_per_household,
+           household_density,households_private,income,income_percapita,
+           area_km,edu_primary_lower,unemployed,informal) %>%
+    #filter((code_muni %in% code_muni_select))%>% #filter(!(code_muni %in% metro_sp_munis))%>%
     select(-code_muni) %>%
     mutate(code_tract=as.character(code_tract)) %>%
-    mutate(pop_total=tidyr::replace_na(pop_total,0))
+    mutate(pop_total=tidyr::replace_na(pop_total,0))  #if pop_total=NA change it to 0 
+
+#remove geometry 
 st_geometry(df)<-NULL
 
+#upload census tract shapefile with full geometry
 census_tract_rds <- "census_tract_df.rds"
 census_tract <- if (file.exists(census_tract_rds)) {
   ## read the data in from disk
@@ -61,35 +73,28 @@ census_tract <- if (file.exists(census_tract_rds)) {
                            code_tract="SP",
                            simplified=FALSE)
 }
-
-#upload census tract shapefile with full geometry
-census_tract<-geobr::read_census_tract(year=2010,code_tract="SP",simplified=FALSE)
+#census_tract<-geobr::read_census_tract(year=2010,code_tract="SP",simplified=FALSE)
 # muni<-geobr::read_municipality(year=2018,code_muni=35,simplified=FALSE)
 # st_write(muni, "muni_shape.shp")
 
-#ensure format is correct for merging later
+#ensure class is correct for merging 
 census_tract$code_tract<-as.character(census_tract$code_tract)
 df$code_tract<-as.character(df$code_tract)
-#re-merge census tract shapefile 
+
+#re-merge census tract with dataframe
 df<-left_join(df,census_tract[,c("code_tract")],by="code_tract")
 df<-st_as_sf(df)
-# #write to shapefile
-# st_write(df, "census_tracts_shape.shp")
 
-# df_sp<-as_Spatial(df)
-# list.nb <- gTouches(df_sp, byid = TRUE, returnDense = FALSE)
-# #nearest neighbour search
-# neighbours<-nngeo::st_nn(df,df,k = 1,progress=FALSE)
-# neighbours<-st_join(df,df,join=st_nn,k=1,progress=FALSE)
-
-merge_smallest_by_centroid <- function(brazil_states) {
+#merge census tracts based on the shortest distance between centroids 
+#after merging census tracts, covariates are reaggregated
+merge_smallest_by_centroid <- function(df) {
     ## Seperate the smallest state from the rest so we know what we want to
     ## merge
-    pop_sizes <- brazil_states$pop_total
+    pop_sizes <- df$pop_total
     smallest_pop_mask <- pop_sizes == min(pop_sizes)
     if (sum(smallest_pop_mask) > 1) {
         warning("Multiple states with the same population size")
-        area_sizes <- st_area(brazil_states)
+        area_sizes <- st_area(df)
         ## we the smallest size *conditioned* upon having equal smallest
         ## population so we need to avoid those with a larger population.
         area_sizes[not(smallest_pop_mask)] <- Inf
@@ -99,8 +104,8 @@ merge_smallest_by_centroid <- function(brazil_states) {
             stop("Could not resolve population size tie by area...")
         }
     }
-    smallest_state <- brazil_states[smallest_pop_mask,]
-    non_smallest_states <- brazil_states[not(smallest_pop_mask),]
+    smallest_state <- df[smallest_pop_mask,]
+    non_smallest_states <- df[not(smallest_pop_mask),]
     ## Seperate the nearest neighbour to the smallest state so we have something
     ## to merge with
     ss_centroid <- st_centroid(smallest_state)
@@ -111,22 +116,52 @@ merge_smallest_by_centroid <- function(brazil_states) {
     nn_state <- non_smallest_states[centroid_distances == nearest_centroid_distance,]
     ## We need to fix up the attributes manually because they are mangled by the
     ## merge when we put everything back together
-    merged_state <- st_union(select(smallest_state, -pop_total, -code_tract),  #just select geom 
-                             select(nn_state, -pop_total, -code_tract))
-    merged_state$pop_total <- smallest_state$pop_total + nn_state$pop_total       #add attributes back such as pop_total and code_state
+    merged_state <- st_union(select(smallest_state),  #just select geom
+                             select(nn_state))
+    merged_state$pop_total <- smallest_state$pop_total + nn_state$pop_total       
+    #add attributes back such as pop_total and code_state
+    
+    #income per capita
+    merged_state$income<-sum(smallest_state$income,nn_state$income,na.rm=TRUE)
+    
+    merged_state$income_percapita<-sum(merged_state$income)/merged_state$pop_total
+    
+    #household density
+    merged_state$household_density<- sum(smallest_state$households_private,
+                      nn_state$households_private,na.rm=TRUE)/sum(smallest_state$area_km,nn_state$area_km,na.rm=TRUE)
+    
+    #pop_per_household
+    merged_state$pop_per_household<- mean(c(smallest_state$pop_per_household,nn_state$pop_per_household),na.rm=TRUE)
+    
+    #unemployment
+    merged_state$unemployed <- mean(c(smallest_state$unemployed,nn_state$unemployed))
+    
+    # #education
+    merged_state$edu_primary_lower <- mean(c(smallest_state$edu_primary_lower,nn_state$edu_primary_lower))
+    
+    # #informal workers
+    merged_state$informal <- mean(c(smallest_state$informal,nn_state$informal))
+    
+    #area - repeat for merging
+    merged_state$area_km <- sum(smallest_state$area_km,nn_state$area_km)
+    
+    #households_private - repeat this covariate for merging
+    merged_state$households_private <- sum(smallest_state$households_private,nn_state$households_private)
+    
     merged_state$code_tract <- paste(smallest_state$code_tract,nn_state$code_tract, sep = ":")
     rbind(non_nn_states, merged_state)
 }
 
-
-iterate_merging <- function(brazil_states, pop_threshold, max_iters = 5500) {
+#iterate the merge until all census tracts have a pop_total >=75
+iterate_merging <- function(df, pop_threshold, max_iters =5500) {  
   iter_count <- 0
-  smallest_pop <- min(brazil_states$pop_total)
-  iter_upper_bound <- min(sum(brazil_states$pop_total < pop_threshold), max_iters)
+  smallest_pop <- min(df$pop_total)
+  iter_upper_bound <- min(sum(df$pop_total < pop_threshold), max_iters)
   if (iter_upper_bound == max_iters) {
     stop("max_iters given to iterate_merging appears too low!")
   }
-  prog_bar <- progress_bar$new(format = "merging [:bar] :percent eta :eta after :elapsed",
+  prog_bar <- progress_bar$new(format = 
+                  "merging [:bar] :percent eta :eta after :elapsed",
                                total = iter_upper_bound,
                                clear = FALSE,
                                width = 80)
@@ -135,21 +170,115 @@ iterate_merging <- function(brazil_states, pop_threshold, max_iters = 5500) {
   message("Running the merge")
   prog_bar$tick(0)
   while (smallest_pop < pop_threshold & iter_count < max_iters) {
-    brazil_states <- merge_smallest_by_centroid(brazil_states)
-    smallest_pop <- min(brazil_states$pop_total)
+    df <- merge_smallest_by_centroid(df)
+    smallest_pop <- min(df$pop_total)
     iter_count <- iter_count + 1 # <--- avoid infinite loop!
     prog_bar$tick()
   }
   
   if (iter_count < max_iters) {
-    return(brazil_states)
+    return(df)
   } else {
     stop("reached maximum iterations without solution")
   }
 }
 
 aggregated_sp_census_state <- iterate_merging(df, 75)
-saveRDS(aggregated_sp_census_state,"aggregated_sp_census_23aug.rds")
+saveRDS(aggregated_sp_census_state,"aggregated_sp_census_state_25aug.rds")
+
+#====combined merged census tracts with weekly case data====
+#load data
+aggregated_sp_census_state<-readRDS("aggregated_sp_census_state_25aug.rds") %>%
+  mutate(idarea=1:nrow(.))
+
+#remove geometry for processing
+st_geometry(aggregated_sp_census_state)<-NULL
+
+#imported weekly case data
+weekly_sum<-readRDS("weekly_sum_complete_spstate.rds") %>%
+  select(-pop_total,-geom) %>%
+  mutate(code_tract=as.character(code_tract))
+
+#create a column to indicate whether it's a merged or non-merged census tract then add it to the census df
+merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_sp_census_state$code_tract, ":"))
+aggregated_sp_state<-cbind(merged_area_bool,aggregated_sp_census_state)
+
+#determine how many columns are needed for function aggregate_weekly_cases
+#within(aggregated_sp_census_state, FOO<-data.frame(do.call('rbind', strsplit(as.character(code_tract), ':', fixed=TRUE))))
+
+#create a new dataframe combining merged census tracts, reaggregated covariates, and weekly case data 
+aggregate_cases_by_tract<- function(aggregated_sp_state, weekly_sum){
+  newdf<-aggregated_sp_state[aggregated_sp_state$merged_area_bool =="TRUE",]
+  #if tract is merged, then run function aggregate_weekly_cases to aggregate weekly case data
+  new_merged_weekly_sum<-aggregate_weekly_cases(aggregated_sp_state,weekly_sum)
+  #if tract is not merged, then just join weekly case data with covariates 
+  ifelse (aggregated_sp_state$merged_area_bool=="FALSE", 
+          a<-(left_join(aggregated_sp_state[!(aggregated_sp_state$merged_area_bool %in% newdf$merged_area_bool),], weekly_sum,by="code_tract")),
+          b<-(left_join(newdf,new_merged_weekly_sum, by="code_tract"))
+  )
+  return(rbind(a,b))
+}
+
+#this function aggregated the number of weekly cases for each merged census tract
+aggregate_weekly_cases<- function(aggregated_sp_state,weekly_sum) {
+  df<-aggregated_sp_state %>%  
+    mutate(code_tract_original=code_tract) %>%
+    separate(code_tract, c("ct1","ct2","ct3","ct4",
+                           "ct5","ct6","ct7","ct8",
+                           "ct9","ct10","ct11","ct12",
+                           "ct13","ct14","ct15")) %>%
+    rename(code_tract=code_tract_original)
+  newdf_with_summed_cases <-data.frame(code_tract=NA, weeklysum=NA, week_notific=NA,status=NA)
+  for (i in 1:nrow(df)){
+        cases_per_merged_tract<-filter(weekly_sum, code_tract %in% 
+                    c(df[i,]$ct1,df[i,]$ct2,df[i,]$ct3,
+                    df[i,]$ct4,df[i,]$ct5,df[i,]$ct6,
+                    df[i,]$ct7,df[i,]$ct8,df[i,]$ct9,
+                    df[i,]$ct10,df[i,]$ct11,df[i,]$ct12,
+                    df[i,]$ct13,df[i,]$ct14,df[i,]$ct15))
+    #aggregate cases by week
+    df_2 <-cases_per_merged_tract %>% 
+      group_by(week_notific,status) %>% 
+      summarise(.,weeklysum = sum(weeklysum,na.rm=TRUE))
+    
+    newdf_with_summed_cases<-rbind(newdf_with_summed_cases,
+                    data.frame("code_tract"=df$code_tract[i],"weeklysum"=df_2$weeklysum,
+                     "week_notific"=df_2$week_notific,"status"=df_2$status))
+  }
+  newdf_with_summed_cases$code_tract<-as.character(newdf_with_summed_cases$code_tract)
+  newdf_with_summed_cases<-newdf_with_summed_cases[!is.na(newdf_with_summed_cases$week_notific), ]
+  return(newdf_with_summed_cases)
+}
+
+##create sample dataset to test functions
+# # newdf$id<-1:nrow(newdf)
+# # newdf<-select(newdf,-id)
+# newdf_sample<-rbind(newdf[1849,],newdf[2142,],newdf[3627,],aggregated_sp_state[1,],
+#                       aggregated_sp_state[2,]) 
+# requires_merging_cases<-new_merged_weekly_sum(newdf_sample,weekly_sum)
+# test<-aggregate_cases_by_tract(newdf_sample,weekly_sum)
+
+#run function on data and save file
+aggregate_final<-aggregate_cases_by_tract(aggregated_sp_state,weekly_sum)
+saveRDS(aggregate_final,"aggregate_final.rds")
+
+#ensure empty tracts have NAs for SES covariates 
+dt = as.data.table(aggregate_final)
+
+dt2<-dt[is.na(pop_per_household) & is.na(household_density), 
+        c("income_percapita","unemployed","informal","edu_primary_lower") := NA]
+
+dt2<-dt2[income_percapita==0, "income_percapita" := NA]
+
+df<-as.data.frame(dt2)
+tracts_cases<-left_join(df,tracts_sf[,c("code_tract")],by="code_tract")
+
+#import data again to merge geometry
+tracts_sf<-readRDS("aggregated_sp_census_state_25aug.rds")
+
+#merge geometry
+tracts_cases<-left_join(df,tracts_sf[,c("code_tract")],by="code_tract")
+saveRDS(tracts_cases, file = "tracts_cases_26Aug.rds") 
 
 
 # fig_1 <- ggplot() +

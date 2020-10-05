@@ -50,12 +50,11 @@ main <- function() {
   ## Read in the data and select the relevant columns because otherwise we end up
   ## with a bunch of other columns we do not care about for this step of the
   ## process.
-  age_data_wide <- readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_23sept_age.rds") %>%
+  age_data_wide <- readRDS("covariates_sp_21sept.rds") %>%
     select(code_tract,
            pop_total,
            starts_with("idade"))
-  st_geometry(age_data_wide)<-NULL
-  
+
   ## Little check to help understanding the way in which data may be missing to
   ## make it easier to work with.
   stopifnot(age_data_wide %>% filter(not(is.na(idade_0a9))) %>% is.na %>% any %>% not)

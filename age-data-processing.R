@@ -54,7 +54,7 @@ main <- function() {
     select(code_tract,
            pop_total,
            starts_with("idade"))
-
+  
   ## Little check to help understanding the way in which data may be missing to
   ## make it easier to work with.
   stopifnot(age_data_wide %>% filter(not(is.na(idade_0a9))) %>% is.na %>% any %>% not)

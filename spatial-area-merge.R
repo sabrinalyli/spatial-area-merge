@@ -59,30 +59,13 @@ df<- readRDS('/Volumes/SLLIWD/covid-social_inequalities/covariates_spstate/covar
   # census tracts of Sao Paulo metro area
   #metro_sp_munis <- geobr::read_metro_area(year=2018)
   #metro_sp_munis <- subset(metro_sp_munis, name_metro == 'RM São Paulo')$code_muni
-  
-  #upload covariates dataframe which contains geometry - data on dropbox
-  df<- readRDS('census_tracts_covariates_spstate_12aug.rds') %>%
-  select(code_tract,code_muni, pop_total,pop_per_household,
-         household_density,households_private,income,income_percapita,
-         area_km,edu_primary_lower,unemployed,informal) %>%
-  #filter((code_muni %in% code_muni_select))%>% #filter(!(code_muni %in% metro_sp_munis))%>%
-  select(-code_muni) %>%
-  mutate(code_tract=as.character(code_tract)) %>%
-  #if pop_total=NA change it to 0 
-  mutate(pop_total=tidyr::replace_na(pop_total,0)) #%>%
-# left_join(age[,c("mean_age","code_tract")],by="code_tract")
-
 mutate(pop_total=tidyr::replace_na(pop_total,0))  #if pop_total=NA change it to 0 
 
 #remove geometry 
 st_geometry(df)<-NULL
 
 #upload census tract shapefile with full geometry
-census_tract_rds <- "census_tract_df.rds"
-@@ -73,26 +73,16 @@ census_tract <- if (file.exists(census_tract_rds)) {
-  code_tract="SP",
-  simplified=FALSE)
-}
+census_tract<-geobr::geobr::read_census_tract(year=2010, code_tract = 'SP', simplified = F)
 
 #census tracts of Sao Paulo metro area
 metro_sp_munis <- geobr::read_metro_area(year=2018)

@@ -1,3 +1,11 @@
+2020-10-05  Alex Zarebski  <aez@zoo-zarebski>
+
+	* age-data-processing.R (main): Wrap the script in a main function
+	so the distinction between the script and the functions is.
+	(main): Make the age group an ordered factor and compute the
+	proportion of the census tract population that is at least 60
+	years of age as one of the summary statistics.
+
 2020-08-22  Alex Zarebski  <aez@zoo-zarebski>
 
 	* spatial-area-merge.R: Attempt to read the census tracks from a

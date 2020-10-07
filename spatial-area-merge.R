@@ -46,12 +46,12 @@ options(scipen=999)
 #"3550308",
 
 #read age csv and merge with df
-age<-read.csv("age-data.csv") %>%
+age<-read.csv("age_data/age-data.csv") %>%
   mutate(code_tract=as.character(code_tract))
 
 #upload processed covariate data from code census2010_spstate_preprocessing.R
 df<- readRDS('/Volumes/SLLIWD/covid-social_inequalities/covariates_spstate/covariates_sp_21sept.rds') %>%
-  select(code_tract,code_muni, pop_total,pop_per_household,
+  dplyr::select(code_tract,code_muni, pop_total,pop_per_household,
          households_total,household_density,income_total,
          edu_primary_lower,unemployed,informal, area_km,distmin_hosp,starts_with("idade")) %>%
   #filter((code_muni %in% code_muni_select))%>% #filter(!(code_muni %in%   metro_sp_munis))%>%
@@ -133,25 +133,24 @@ merge_smallest_by_centroid <- function(df) {
     nn_state <- non_smallest_states[centroid_distances == nearest_centroid_distance,]
     ## We need to fix up the attributes manually because they are mangled by the
     ## merge when we put everything back together
-    merged_state <- st_union(select(smallest_state),  #just select geom
-                             select(nn_state))
-    
+    merged_state <- st_union(dplyr::select(smallest_state),  #just select geom
+                             dplyr::select(nn_state))
     #add attributes back such as pop_total and code_state
     merged_state$pop_total <- smallest_state$pop_total + nn_state$pop_total  
 
-    #income per capita
+    #income 
     merged_state$income_total<-sum(smallest_state$income_total,nn_state$income_total,na.rm=TRUE)
-    merged_state$income<-sum(smallest_state$income,nn_state$income,na.rm=TRUE)
+    # merged_state$income<-sum(smallest_state$income,nn_state$income,na.rm=TRUE)
     
     #merged_state$income_percapita<-sum(merged_state$income_total)/merged_state$pop_total
-    merged_state$income_percapita<-sum(merged_state$income)/merged_state$pop_total
+    # merged_state$income_percapita<-sum(merged_state$income)/merged_state$pop_total
     
     #household density
     merged_state$household_density<- sum(smallest_state$households_total,
-                                      nn_state$households_total,na.rm=TRUE)/sum(smallest_state$area_km,nn_state$area_km,na.rm=TRUE)
+            nn_state$households_total,na.rm=TRUE)/sum(smallest_state$area_km,nn_state$area_km,na.rm=TRUE)
     
-    merged_state$household_density<- sum(smallest_state$households_private,
-                                    nn_state$households_private,na.rm=TRUE)/sum(smallest_state$area_km,nn_state$area_km,na.rm=TRUE)
+    # merged_state$household_density<- sum(smallest_state$households_private,
+    #     nn_state$households_private,na.rm=TRUE)/sum(smallest_state$area_km,nn_state$area_km,na.rm=TRUE)
     
     #pop_per_household
     merged_state$pop_per_household<- mean(c(smallest_state$pop_per_household,nn_state$pop_per_household),na.rm=TRUE)
@@ -196,17 +195,18 @@ merge_smallest_by_centroid <- function(df) {
     merged_state$households_total <- sum(smallest_state$households_total,nn_state$households_total)
     
     #households_private - repeat this covariate for merging
-    merged_state$households_private <- sum(smallest_state$households_private,nn_state$households_private)
+    #merged_state$households_private <- sum(smallest_state$households_private,nn_state$households_private)
     
     merged_state$code_tract <- paste(smallest_state$code_tract,nn_state$code_tract, sep = ":")
     
     rbind(non_nn_states, merged_state)
   }
   
-  
+max_iters<-subset(df,pop_total<143)
 #iterate the merge until all census tracts have a pop_total >=75
 #for gmsp it's 68
-    iterate_merging <- function(df, pop_threshold, max_iters =1800) {  
+#but for gmsp weekly estimates it's 143
+iterate_merging <- function(df, pop_threshold, max_iters =2250) {  
     #iterate_merging <- function(df, pop_threshold, max_iters =5500) {  
       iter_count <- 0
       smallest_pop <- min(df$pop_total)
@@ -237,9 +237,9 @@ merge_smallest_by_centroid <- function(df) {
       }
     }
 
-aggregated_gmsp_census <- iterate_merging(df, 68)
+aggregated_gmsp_census <- iterate_merging(df, 143)
 #aggregated_sp_census_state<-iterate_merging(df,75)
-saveRDS(aggregated_gmsp_census,"aggregated_gmsp_census_23sept_age.rds")
+saveRDS(aggregated_gmsp_census,"aggregated_census_gmsp/aggregated_gmsp_census_06Oct.rds")
 write_sf(aggregated_gmsp_census,"aggregated_gmsp.shp")
 #saveRDS(aggregated_sp_census_state,"aggregated_sp_census_state_3sept.rds")
 aggregated_sp_census_state <- iterate_merging(df, 75)
@@ -248,30 +248,30 @@ saveRDS(aggregated_sp_census_state,"aggregated_sp_census_state_25aug.rds")
 #====combined merged census tracts with weekly case data====
 
 #load data
-aggregated_gmsp_census<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_23sept_age.rds") %>%
-  mutate(idarea=1:nrow(.))
-  
-aggregated_sp_census_state<-readRDS("aggregated_sp_census_state_25aug.rds") %>%
+# aggregated_gmsp_census<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/") %>%
+#   mutate(idarea=1:nrow(.))
+#   
+aggregated_sp_census_state<-readRDS("aggregated_census_gmsp/tract_merge_state/aggregated_sp_census_state_3sept.rds") %>%
     mutate(idarea=1:nrow(.))
   
 #remove geometry for processing
 st_geometry(aggregated_gmsp_census)<-NULL
 
-st_geometry(aggregated_sp_census_state)<-NULL
+# st_geometry(aggregated_sp_census_state)<-NULL
 
 #imported weekly case data
-weekly_sum<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/case_data/weekly_sum_complete_gmsp_hosp_22sept.rds") %>%
-  select(-pop_total) %>% #weekly_sum_complete_spstate_4sept.rds"
+weekly_sum<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/case_data/weekly_sum_complete_gmsp_cases_5Oct.rds") %>%
+  #dplyr::select(-pop_total) %>% #weekly_sum_complete_spstate_4sept.rds"
   mutate(code_tract=as.character(code_tract)) %>%
   filter(code_tract %in% gmsp_df$code_tract)
 
-weekly_sum<-readRDS("weekly_sum_complete_spstate.rds") %>%
-  select(-pop_total,-geom) %>%
-  mutate(code_tract=as.character(code_tract))
+# weekly_sum<-readRDS("weekly_sum_complete_spstate.rds") %>%
+#   select(-pop_total,-geom) %>%
+#   mutate(code_tract=as.character(code_tract))
 
 #create a column to indicate whether it's a merged or non-merged census tract then add it to the census df
-merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_gmsp_census$code_tract, ":"))
-aggregated_gmsp_census<-cbind(merged_area_bool,aggregated_gmsp_census)
+# merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_gmsp_census$code_tract, ":"))
+# aggregated_gmsp_census<-cbind(merged_area_bool,aggregated_gmsp_census)
 
 merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_sp_census_state$code_tract, ":"))
 aggregated_sp_state<-cbind(merged_area_bool,aggregated_sp_census_state)
@@ -296,7 +296,7 @@ aggregate_cases_by_tract<- function(aggregated_sp_state, weekly_sum){
   
 #this function aggregated the number of weekly cases for each merged census tract
 aggregate_weekly_cases<- function(aggregated_sp_state,weekly_sum) {
-    df<-aggregated_sp_state %>%  
+    df<-  aggregated_sp_state %>% # %>%  newdf
       mutate(code_tract_original=code_tract) %>%
       separate(code_tract, c("ct1","ct2","ct3","ct4",
                              "ct5","ct6","ct7","ct8",
@@ -316,13 +316,14 @@ aggregate_weekly_cases<- function(aggregated_sp_state,weekly_sum) {
       group_by(week_notific,status) %>% 
       summarise(.,weeklysum = sum(weeklysum,na.rm=TRUE)) 
       newdf_with_summed_cases<-rbind(newdf_with_summed_cases,
-                          data.frame("code_tract"=df$code_tract[i],"weeklysum"=df_2$weeklysum,
-                          "week_notific"=df_2$week_notific,"status"=df_2$status))
+                                     data.frame("code_tract"=df$code_tract[i],
+                                                "weeklysum"=df_2$weeklysum,
+                                                "week_notific"=df_2$week_notific,
+                                                "status"=df_2$status))
     }
     newdf_with_summed_cases$code_tract<-as.character(newdf_with_summed_cases$code_tract)
     newdf_with_summed_cases<-newdf_with_summed_cases[!is.na(newdf_with_summed_cases$week_notific), ]
     return(newdf_with_summed_cases)
-  
 }
 ##create sample dataset to test functions
 # newdf$id<-1:nrow(newdf)
@@ -337,43 +338,30 @@ aggregate_weekly_cases<- function(aggregated_sp_state,weekly_sum) {
 
 #run function on data and save file
 aggregate_final<-aggregate_cases_by_tract(aggregated_gmsp_census,weekly_sum)
-saveRDS(aggregate_final,"/Volumes/SLLIWD/covid-social_inequalities/case_data/aggregate_gmsp_hosp_final_23sept.rds")
+saveRDS(aggregate_final,"/Volumes/SLLIWD/covid-social_inequalities/case_data/aggregate_gmsp_final_merge_06Oct.rds")
+
+
+length(which(agg$monthlysum == 0))
+length(which(aggregate_final$weeklysum != 0))
+
+
 aggregate_final<-aggregate_cases_by_tract(aggregated_sp_state,weekly_sum)
 saveRDS(aggregate_final,"aggregate_final.rds")
 
-#ensure empty tracts have 0 for SES covariates - should already been done in other code
-dt = as.data.table(aggregate_final)
-
 #import data again to merge geometry
-tracts_sf<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_23sept_age.rds") %>%
+tracts_sf<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_06Oct.rds") %>%
   mutate(idarea=1:nrow(.))
 
 tracts_sf<-st_as_sf(tracts_sf)
 census_tract<-geobr::read_census_tract(year=2010,
                                        code_tract="SP",
                                        simplified=FALSE)
-
-dt2<-dt[is.na(pop_per_household) & is.na(household_density), 
-        c("income_percapita","unemployed","informal","edu_primary_lower") := NA]
-
 #merge geometry
-tracts_cases<-left_join(aggregate_final,tracts_sf[,c("code_tract","idarea")],by="code_tract")
-saveRDS(tracts_cases, file = "/Volumes/SLLIWD/covid-social_inequalities/case_data/aggregate_gmsp_final_hosp_cases_23sept.rds") 
-dt2<-dt2[income_percapita==0, "income_percapita" := NA]
+aggregate_final<-aggregate_final %>%
+  dplyr::select(-idarea)
 
-df<-as.data.frame(dt2)
-tracts_cases<-left_join(df,tracts_sf[,c("code_tract")],by="code_tract")
-
-tracts_sf<-st_as_sf(aggregated_gmsp_census)
-tracts_cases<-dplyr::left_join(aggregate_final,aggregated_gmsp_census[,c("code_tract")],by="code_tract")
-
-saveRDS(tracts_cases, file = "aggregate_gmsp_final_cases_17sept.rds") 
-#import data again to merge geometry
-tracts_sf<-readRDS("aggregated_sp_census_state_25aug.rds")
-
-#merge geometry
-tracts_cases<-left_join(df,tracts_sf[,c("code_tract")],by="code_tract")
-saveRDS(tracts_cases, file = "tracts_cases_26Aug.rds") 
+tracts_cases<-left_join(aggregate_final,tracts_sf[,c("code_tract","idarea")],by="code_tract") 
+saveRDS(tracts_cases, file = "/Volumes/SLLIWD/covid-social_inequalities/case_data/aggregate_gmsp_final_cases_07Oct.rds") 
 
 
 # fig_1 <- ggplot() +

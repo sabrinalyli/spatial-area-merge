@@ -50,8 +50,8 @@ main <- function() {
   ## Read in the data and select the relevant columns because otherwise we end up
   ## with a bunch of other columns we do not care about for this step of the
   ## process.
-  age_data_wide <- readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_23sept_age.rds") %>%
-    select(code_tract,
+  age_data_wide <- readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_06Oct.rds") %>%
+    dplyr::select(code_tract,
            pop_total,
            starts_with("idade"))
   st_geometry(age_data_wide)<-NULL
@@ -118,7 +118,7 @@ main <- function() {
   ## Construct the final data frame with all the census tracts with the missing
   ## values replaced by the imputed values so that this is easy to use in
   ## subsequent analyses.
-  result <- left_join(x = select(age_data_wide, code_tract),
+  result <- left_join(x = dplyr::select(age_data_wide, code_tract),
                       y = partial_result,
                       by = "code_tract")
   result$imputed <- is.na(result$mean_age)

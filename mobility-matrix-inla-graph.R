@@ -30,8 +30,7 @@ muni_mat<-read.csv("code_muni_names_pedro.csv") %>%
 
 #import code_muni_sp.csv which serves as the reference list 
 muni_sp<-read.csv("code_muni_names_sp.csv") %>%
-  rename(idarea1=idarea) %>%
-  arrange(idarea1)
+  rename(idarea1=idarea)
 
 #create id dictionary that links id from code_muni_sp.csv to id/location in matrix
 dict<-left_join(muni_sp,muni_mat[,c("code_muni","idarea2")],by="code_muni")

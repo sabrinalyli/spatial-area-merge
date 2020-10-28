@@ -50,7 +50,7 @@ main <- function() {
   ## Read in the data and select the relevant columns because otherwise we end up
   ## with a bunch of other columns we do not care about for this step of the
   ## process.
-  age_data_wide <- readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_06Oct.rds") %>%
+  age_data_wide <- readRDS("/Volumes/SLLIWD 1/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_23sept_age.rds") %>%
     dplyr::select(code_tract,
            pop_total,
            starts_with("idade"))

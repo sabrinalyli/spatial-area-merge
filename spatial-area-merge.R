@@ -248,11 +248,11 @@ saveRDS(aggregated_sp_census_state,"aggregated_sp_census_state_25aug.rds")
 #====combined merged census tracts with weekly case data====
 
 #load data
-# aggregated_gmsp_census<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/") %>%
-#   mutate(idarea=1:nrow(.))
+aggregated_gmsp_census<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/aggregated_census_gmsp/aggregated_gmsp_census_06Oct.rds") %>%
+  mutate(idarea=1:nrow(.))
 #   
-aggregated_sp_census_state<-readRDS("aggregated_census_gmsp/tract_merge_state/aggregated_sp_census_state_3sept.rds") %>%
-    mutate(idarea=1:nrow(.))
+# aggregated_sp_census_state<-readRDS("aggregated_census_gmsp/tract_merge_state/aggregated_sp_census_state_3sept.rds") %>%
+#     mutate(idarea=1:nrow(.))
   
 #remove geometry for processing
 st_geometry(aggregated_gmsp_census)<-NULL
@@ -260,27 +260,41 @@ st_geometry(aggregated_gmsp_census)<-NULL
 # st_geometry(aggregated_sp_census_state)<-NULL
 
 #imported weekly case data
-weekly_sum<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/case_data/weekly_sum_complete_gmsp_cases_5Oct.rds") %>%
-  #dplyr::select(-pop_total) %>% #weekly_sum_complete_spstate_4sept.rds"
-  mutate(code_tract=as.character(code_tract)) %>%
-  filter(code_tract %in% gmsp_df$code_tract)
+# weekly_sum<-readRDS("/Volumes/SLLIWD/covid-social_inequalities/case_data/weekly_sum_complete_gmsp_cases_5Oct.rds") %>%
+#   #dplyr::select(-pop_total) %>% #weekly_sum_complete_spstate_4sept.rds"
+#   mutate(code_tract=as.character(code_tract)) %>%
+#   filter(code_tract %in% gmsp_df$code_tract)
 
-# weekly_sum<-readRDS("weekly_sum_complete_spstate.rds") %>%
-#   select(-pop_total,-geom) %>%
-#   mutate(code_tract=as.character(code_tract))
+weekly_sum<-readRDS("case_data/weekly_sum_complete_sp_cases_16Oct.rds") %>%
+  select(-pop_total,-geom) %>%
+  mutate(code_tract=as.character(code_tract))
+st_geometry(weekly_sum)<-NULL
+
+test<-subset(weekly_sum,week_notific==32)
+
+census_tract <- geobr::read_census_tract(year=2010, code_tract = 'SP', simplified = T) 
+
+metro_sp_munis <- geobr::read_metro_area(year=2018)
+metro_sp_munis <- subset(metro_sp_munis, name_metro == 'RM São Paulo')$code_muni 
+
+test2<-test%>%
+  left_join(census_tract[,c("code_tract","code_muni")],by="code_tract") %>%
+  filter(code_muni %in% metro_sp_munis) %>%
+  select(-code_muni)
 
 #create a column to indicate whether it's a merged or non-merged census tract then add it to the census df
-# merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_gmsp_census$code_tract, ":"))
-# aggregated_gmsp_census<-cbind(merged_area_bool,aggregated_gmsp_census)
+merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_gmsp_census$code_tract, ":"))
+aggregated_gmsp_census<-cbind(merged_area_bool,aggregated_gmsp_census)
 
-merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_sp_census_state$code_tract, ":"))
-aggregated_sp_state<-cbind(merged_area_bool,aggregated_sp_census_state)
+# merged_area_bool<-data.frame(merged_area_bool=str_detect(aggregated_sp_census_state$code_tract, ":"))
+# aggregated_sp_state<-cbind(merged_area_bool,aggregated_sp_census_state)
 
 #determine how many columns are needed for function aggregate_weekly_cases
-# within(aggregated_gmsp_census, FOO<-data.frame(do.call('rbind', strsplit(as.character(code_tract), ':', fixed=TRUE))))
+within(aggregated_gmsp_census, FOO<-data.frame(do.call('rbind', strsplit(as.character(code_tract), ':', fixed=TRUE))))
 # within(aggregated_sp_census_state, FOO<-data.frame(do.call('rbind', strsplit(as.character(code_tract), ':', fixed=TRUE))))
 
 #create a new dataframe combining merged census tracts, reaggregated covariates, and weekly case data 
+
 aggregate_cases_by_tract<- function(aggregated_sp_state, weekly_sum){
     newdf<-aggregated_sp_state[aggregated_sp_state$merged_area_bool =="TRUE",]
     #if tract is merged, then run function aggregate_weekly_cases to aggregate weekly case data
@@ -295,8 +309,9 @@ aggregate_cases_by_tract<- function(aggregated_sp_state, weekly_sum){
   }
   
 #this function aggregated the number of weekly cases for each merged census tract
+
 aggregate_weekly_cases<- function(aggregated_sp_state,weekly_sum) {
-    df<-  aggregated_sp_state %>% # %>%  newdf
+    df<-   newdf %>% #aggregated_sp_state %>% # %>%  newdf
       mutate(code_tract_original=code_tract) %>%
       separate(code_tract, c("ct1","ct2","ct3","ct4",
                              "ct5","ct6","ct7","ct8",
@@ -338,7 +353,7 @@ aggregate_weekly_cases<- function(aggregated_sp_state,weekly_sum) {
 
 #run function on data and save file
 aggregate_final<-aggregate_cases_by_tract(aggregated_gmsp_census,weekly_sum)
-saveRDS(aggregate_final,"/Volumes/SLLIWD/covid-social_inequalities/case_data/aggregate_gmsp_final_merge_06Oct.rds")
+saveRDS(aggregate_final,"/Volumes/SLLIWD/covid-social_inequalities/case_data/aggregate_gmsp_final_merge_cases_17Oct.rds")
 
 
 length(which(agg$monthlysum == 0))

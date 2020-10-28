@@ -39,6 +39,8 @@ dict<-left_join(muni_sp,muni_mat[,c("code_muni","idarea2")],by="code_muni")
 #create function that extracts the idarea of each matrix cell based on the definitive list of muni names
 idarea_extract<- function(mat_bin) {
 id_list <- vector(mode = "list", length = 1)
+#first entry must be the number of nodes in the graph
+id_list[1]<-645
 #determine id of reference list 
   for (i in dict$idarea1) {
     #find corresponding id of mobility matrix
@@ -57,8 +59,6 @@ id_list <- vector(mode = "list", length = 1)
     id_list<-append(id_list,
                     list(c(i,edges,id_dest)))
   }
-#first entry must be the number of nodes in the graph
-id_list[1]<-645
 return(id_list)
 }
 

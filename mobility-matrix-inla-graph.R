@@ -1,6 +1,8 @@
 library(dplyr)
 library(INLA)
 
+##NOTE download files from dropbox folder called "spatial-matrix"##
+
 #import mobility data for the month of March 2020
 mob<-readxl::read_excel("mobility_mat17OCT.xlsx") %>%
   select(-col) 
